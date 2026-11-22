@@ -7,7 +7,7 @@ services:
     environment:
       POSTGRES_DB: RH_Jornada
       POSTGRES_USER: rh_admin
-      POSTGRES_PASSWORD: 060105
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
     ports:
       - "5432:5432"
     volumes:
