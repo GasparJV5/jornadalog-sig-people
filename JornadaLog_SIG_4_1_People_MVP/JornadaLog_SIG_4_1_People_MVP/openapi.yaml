@@ -1,0 +1,19 @@
+openapi: 3.0.3
+info: {title: SIG-Log People API, version: 1.0.0}
+servers: [{url: http://localhost:5000}]
+paths:
+  /api/employees:
+    get:
+      summary: Listar funcionarios
+      responses: {'200': {description: OK}}
+    post:
+      summary: Cadastrar funcionario
+      responses: {'201': {description: Criado}, '400': {description: Dados invalidos}}
+  /api/allocations/validate:
+    post:
+      summary: Validar alocacao
+      responses: {'200': {description: Resultado das regras}}
+  /api/allocations:
+    post:
+      summary: Confirmar alocacao e registrar MotoristaEscalado
+      responses: {'201': {description: Criada}}
