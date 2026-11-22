@@ -4,7 +4,7 @@
 -- MIGRATION 000 - CONTROLE DE VERSOES
 -- =====================================================
 
-CREATE TABLE schema_migrations (
+CREATE TABLE controle_migrations (
     id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     versao VARCHAR(50) NOT NULL UNIQUE,
     nome_arquivo VARCHAR(255) NOT NULL,
