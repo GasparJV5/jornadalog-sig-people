@@ -1,9 +1,8 @@
-
 # Ambiente Local — JornadaLog SIG 4.1 People
 
 ## 1. Objetivo
 
-Este documento apresenta as instruções para configurar e executar localmente o ambiente de banco de dados e infraestrutura do projeto.
+Este documento apresenta as instruções para configurar e executar localmente o ambiente de banco de dados e infraestrutura do módulo People.
 
 ## 2. Pré-requisitos
 
@@ -12,7 +11,23 @@ Este documento apresenta as instruções para configurar e executar localmente o
 - Python 3.
 - Git.
 
-## 3. Subindo a infraestrutura
+## 3. Configuração do ambiente
+
+Na raiz do projeto, crie o arquivo `.env` a partir do exemplo:
+
+```bash
+cp .env.example .env
+```
+
+Edite o arquivo `.env` e configure os valores das variáveis:
+
+- `POSTGRES_PASSWORD`: senha do PostgreSQL.
+- `RABBITMQ_DEFAULT_USER`: usuário do RabbitMQ.
+- `RABBITMQ_DEFAULT_PASS`: senha do RabbitMQ.
+
+O arquivo `.env` contém credenciais locais e não deve ser enviado ao Git.
+
+## 4. Subindo a infraestrutura
 
 Na raiz do projeto, execute:
 
@@ -26,7 +41,7 @@ Para verificar os containers:
 docker compose ps
 ```
 
-## 4. Banco de dados
+## 5. Banco de dados
 
 Instale as dependências Python:
 
@@ -46,34 +61,30 @@ Execute os dados iniciais:
 python database/scripts/executar_seeds.py
 ```
 
-## 5. Serviços disponíveis
+As migrations criam e atualizam a estrutura do banco. Os seeds inserem os dados iniciais necessários ao ambiente.
 
-- PostgreSQL: localhost:5432
-- RabbitMQ: localhost:5672
-- Painel RabbitMQ: http://localhost:15672
-- Prometheus: http://localhost:9090
-- Grafana: http://localhost:3000
-- Jaeger: http://localhost:16686
-- OpenTelemetry OTLP gRPC: localhost:4317
-- OpenTelemetry OTLP HTTP: localhost:4318
+## 6. Serviços disponíveis
 
-## 6. Monitoramento e observabilidade
+| Serviço | Endereço |
+|---|---|
+| PostgreSQL | localhost:5432 |
+| PostgreSQL Exporter | postgres-exporter:9187 (rede Docker) |
+| RabbitMQ | localhost:5672 |
+| Painel RabbitMQ | http://localhost:15672 |
+| Prometheus | http://localhost:9090 |
+| Grafana | http://localhost:3000 |
+| Jaeger | http://localhost:16686 |
+| OpenTelemetry OTLP gRPC | localhost:4317 |
+| OpenTelemetry OTLP HTTP | localhost:4318 |
+
+As credenciais do RabbitMQ são definidas pelas variáveis do arquivo `.env`.
+
+## 7. Monitoramento e observabilidade
 
 - Prometheus coleta métricas dos alvos configurados.
-- Grafana utiliza o Prometheus e o Jaeger como fontes de dados.
-- OpenTelemetry Collector recebe dados OTLP e encaminha traces ao Jaeger.
-- O Jaeger permite visualizar traces enviados pela aplicação.
-- A visualização de traces depende da instrumentação do backend.
-
-## 7. Encerrando a infraestrutura
-
-Para parar os containers, execute:
-
-```bash
-docker compose down
-```
-
-Os volumes são preservados ao utilizar esse comando.
-
-Evite utilizar `docker compose down -v`, pois esse comando remove os volumes e pode apagar os dados persistidos.
-
+- PostgreSQL Exporter disponibiliza métricas do banco PostgreSQL.
+- RabbitMQ disponibiliza métricas por meio do plugin Prometheus.
+- Grafana utiliza Prometheus e Jaeger como fontes de dados.
+- O dashboard principal do Grafana apresenta indicadores de monitoramento da infraestrutura.
+- OpenTelemetry Collector recebe dados pelos protocolos OTLP e encaminha traces ao Jaeger.
+- Jaeger permite visualizar traces distribuídos enviados pela aplicação.
