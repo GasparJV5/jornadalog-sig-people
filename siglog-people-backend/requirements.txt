@@ -1,0 +1,4 @@
+Flask>=3.0
+pytest>=8.0
+pika>=1.3      # opcional: só para RabbitMQEventPublisher
+PyYAML>=6.0   # usado no teste de contrato do openapi.yaml
