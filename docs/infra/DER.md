@@ -1,11 +1,10 @@
-
 # DER — JornadaLog SIG 4.1 People
 
 ## 1. Objetivo
 
 Este documento apresenta o Diagrama Entidade-Relacionamento (DER) do banco de dados RH_Jornada, desenvolvido em PostgreSQL 18.
 
-O banco gerencia funcionários, cargos, certificações, disponibilidades, turnos, escalas e registros de jornada.
+O banco gerencia funcionários, cargos, certificações, disponibilidades, turnos, escalas, registros de jornada, veículos e descansos.
 
 ## 2. Diagrama Entidade-Relacionamento
 
@@ -19,6 +18,7 @@ erDiagram
     ESCALAS ||--o{ ALOCACOES : contem
     FUNCIONARIOS ||--o{ ALOCACOES : recebe
     ALOCACOES ||--o{ REGISTROS_JORNADA : gera
+    FUNCIONARIOS ||--o{ DESCANSOS : possui
 
     CARGOS {
         bigint id PK
@@ -85,9 +85,11 @@ erDiagram
         bigint id PK
         bigint escala_id FK
         bigint funcionario_id FK
+        varchar funcao_exercida
         time hora_inicio
         time hora_fim
         varchar status
+        text observacoes
     }
 
     REGISTROS_JORNADA {
@@ -98,6 +100,25 @@ erDiagram
         integer intervalo_minutos
     }
 
+    VEICULOS {
+        bigint id PK
+        varchar placa UK
+        varchar modelo
+        varchar marca
+        integer ano
+        varchar status
+    }
+
+    DESCANSOS {
+        bigint id PK
+        bigint funcionario_id FK
+        timestamp inicio_descanso
+        timestamp fim_descanso
+        text observacoes
+        timestamp criado_em
+
+    }
+
     OUTBOX_EVENTOS {
         bigint id PK
         varchar tipo_evento
@@ -105,6 +126,9 @@ erDiagram
         jsonb payload
         varchar status
         timestamp criado_em
+        timestamp processado_em
+        integer tentativas
+        text erro
     }
 ```
 
@@ -117,6 +141,7 @@ erDiagram
 - Escalas e Alocações: uma escala pode conter várias alocações.
 - Funcionários e Alocações: um funcionário pode possuir várias alocações.
 - Alocações e Registros de Jornada: uma alocação pode possuir vários registros de jornada.
+- Funcionários e Descansos: um funcionário pode possuir vários registros de descanso.
 
 ## 4. Tabela de eventos
 

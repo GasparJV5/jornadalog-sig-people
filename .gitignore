@@ -27,3 +27,4 @@ Thumbs.db
 # Editores
 .vscode/
 .idea/
+/database/BD_RH_Jornada.sql
