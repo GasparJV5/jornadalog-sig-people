@@ -1,6 +1,410 @@
-<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>SIG-Log People</title><link rel="stylesheet" href="css/app.css"></head><body>
-<div id="app"><aside class="sidebar" id="sidebar"><div class="brand"><span class="brandmark">JL</span><div><b>JornadaLog</b><small>SIG-Log People</small></div></div><nav id="nav"></nav><div class="version">MVP 4.1 · People</div></aside>
-<div class="shell"><header class="topbar"><button class="icon mobile" id="menuBtn" aria-label="Abrir menu">☰</button><div class="crumb"><small id="eyebrow">NÍVEL GERENCIAL</small><h1 id="title">Visão Geral</h1></div><div class="top-actions"><label class="search"><span>⌕</span><input id="globalSearch" placeholder="Pesquisar pessoas, escalas ou conflitos"></label><button class="primary" id="quickBtn">＋ Novo</button><button class="status good" id="apiStatus" title="Integridade da API">● API</button><button class="icon" id="notificationBtn" aria-label="Notificações">🔔 <b id="notificationCount">0</b></button><select id="roleSelect" aria-label="Perfil"><option value="GESTOR_OPERACOES">Gestor de Operações</option><option value="GESTOR_RH">Gestor de RH</option><option value="OPERADOR">Operador</option><option value="PROFISSIONAL">Profissional</option><option value="ADMIN">Administrador</option></select><span class="avatar">UD</span></div></header><main id="content" tabindex="-1"></main></div></div>
-<div class="drawer" id="drawer" aria-hidden="true"><div class="drawer-head"><h3>Notificações</h3><button class="icon" data-close>×</button></div><div id="drawerContent"></div></div><div class="backdrop" id="backdrop"></div>
-<div class="modal" id="modal" aria-hidden="true"><div class="modal-card"><div class="modal-head"><h3 id="modalTitle">Nova ação</h3><button class="icon" data-close>×</button></div><div id="modalBody"></div></div></div><div id="toast" aria-live="polite"></div>
-<script type="module" src="js/app.js"></script></body></html>
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SIG-Log Enterprise | Gestão de Jornadas & Pessoas</title>
+  <link rel="stylesheet" href="css/app.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+
+  <!-- TELA 1: LOGIN CORPORATIVO (Inicial) -->
+  <div id="loginScreen" class="login-wrapper">
+    <div class="login-container">
+      <div class="login-brand">
+        <div class="corporate-badge">PLATAFORMA CORPORATIVA INTEGRADA</div>
+        <div class="logo-group">
+          <div class="brand-symbol">
+            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>
+            </svg>
+          </div>
+          <div>
+            <h1>SIG-Log People</h1>
+            <span class="sub-version">Release 4.1 Enterprise &bull; Squad 05</span>
+          </div>
+        </div>
+        <p class="brand-desc">Sistema Integrado de Gestão de Frotas, Pessoas e Conformidade de Jornadas Logísticas.</p>
+      </div>
+
+      <div class="login-card">
+        <div class="login-header">
+          <h2>Acesso ao Portal Corporativo</h2>
+          <p>Informe suas credenciais ou selecione um perfil operacional homologado.</p>
+        </div>
+
+        <form id="formLogin">
+          <div class="form-group">
+            <label for="loginEmail">E-mail Corporativo ou ID</label>
+            <div class="input-with-icon">
+              <span class="input-icon">👤</span>
+              <input type="text" id="loginEmail" placeholder="usuario@siglog.corp" value="operador.rh@siglog.corp" required>
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label for="loginRole">Perfil de Atuação</label>
+            <div class="input-with-icon">
+              <span class="input-icon">🛡️</span>
+              <select id="loginRole" required>
+                <option value="Operador de RH">Operador de RH (Cadastro e Jornadas)</option>
+                <option value="Gestor de Tráfego">Gestor de Tráfego & Escalas</option>
+                <option value="Auditor de Compliance">Auditor de Compliance & Descansos</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label for="loginPass">Chave de Acesso / Token</label>
+            <div class="input-with-icon">
+              <span class="input-icon">🔒</span>
+              <input type="password" id="loginPass" value="••••••••••••" placeholder="Senha do domínio" required>
+            </div>
+          </div>
+
+          <div class="login-meta">
+            <label class="remember-me">
+              <input type="checkbox" checked> Lembrar nesta estação
+            </label>
+            <a href="#" class="forgot-link" onclick="alert('Consulte o administrador do cluster SIG-Log para redefinição via SSO.'); return false;">Suporte SSO</a>
+          </div>
+
+          <button type="submit" class="btn btn-primary btn-block btn-lg">
+            <span>Acessar Ambiente Seguro</span>
+            <span class="arrow">&rarr;</span>
+          </button>
+        </form>
+
+        <div class="login-footer">
+          <div class="security-tag">
+            <span class="sec-dot"></span> Conexão com barramento de eventos Outbox ativa
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- TELA 2: AMBIENTE DO SISTEMA (Após Login) -->
+  <div id="appLayout" class="app-layout hidden">
+    <!-- Sidebar Corporativa -->
+    <aside class="sidebar">
+      <div class="sidebar-header">
+        <div class="brand-mini">
+          <div class="brand-symbol sm">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>
+            </svg>
+          </div>
+          <div>
+            <h3>SIG-Log People</h3>
+            <span class="badge-env">PROD-4.1</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="nav-section-title">OPERAÇÃO & GESTÃO</div>
+      <nav class="nav-menu">
+        <button type="button" class="nav-item active" data-tab="dashboard">
+          <span class="nav-icon">📊</span>
+          <span class="nav-text">Painel Executivo (KPIs)</span>
+        </button>
+        <button type="button" class="nav-item" data-tab="employees">
+          <span class="nav-icon">👥</span>
+          <span class="nav-text">Quadro de Pessoas</span>
+        </button>
+        <button type="button" class="nav-item" data-tab="allocations">
+          <span class="nav-icon">📋</span>
+          <span class="nav-text">Alocações & Escalas</span>
+        </button>
+        <button type="button" class="nav-item" data-tab="conflicts">
+          <span class="nav-icon">⚠️</span>
+          <span class="nav-text">Auditoria de Conflitos</span>
+          <span class="badge-count" id="navConflictBadge">0</span>
+        </button>
+      </nav>
+
+      <div class="nav-section-title">SISTEMA & GOVERNANÇA</div>
+      <nav class="nav-menu">
+        <button type="button" class="nav-item" onclick="window.open('http://localhost:5000/api/dashboard', '_blank')">
+          <span class="nav-icon">🔗</span>
+          <span class="nav-text">Endpoint API (/dashboard)</span>
+        </button>
+      </nav>
+
+      <!-- Perfil do Usuário na Base da Sidebar -->
+      <div class="sidebar-footer">
+        <div class="user-profile-card">
+          <div class="avatar-corp" id="userAvatar">RH</div>
+          <div class="user-meta">
+            <span class="user-name" id="userNameDisplay">Carlos Miranda</span>
+            <span class="user-role" id="userRoleDisplay">Operador de RH</span>
+          </div>
+          <button type="button" class="btn-logout" id="btnLogout" title="Encerrar Sessão">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9"/>
+            </svg>
+          </button>
+        </div>
+      </div>
+    </aside>
+
+    <!-- Área Principal de Trabalho -->
+    <main class="main-content">
+      <!-- Barra Superior Executiva -->
+      <header class="top-bar">
+        <div class="top-bar-left">
+          <div class="breadcrumb">
+            <span>SIG-Log</span> / <span id="currentSectionName">Painel Executivo</span>
+          </div>
+        </div>
+
+        <div class="top-bar-right">
+          <div class="system-indicator">
+            <span class="pulse-dot online" id="statusDot"></span>
+            <span class="status-label" id="statusLabel">Conectando à API...</span>
+          </div>
+          <button type="button" class="btn btn-sm btn-ghost" id="btnSync">
+            <span>🔄 Sincronizar</span>
+          </button>
+        </div>
+      </header>
+
+      <!-- Banner Global de Feedback -->
+      <div id="feedbackBanner" class="feedback-banner hidden"></div>
+
+      <!-- PAINEL 1: DASHBOARD EXECUTIVO -->
+      <section id="view-dashboard" class="view-panel active">
+        <div class="section-title-wrap">
+          <div>
+            <h2>Visão Geral de Disponibilidade e Conformidade</h2>
+            <p>Métricas operacionais consolidadas a partir do banco de dados relacional e motor de regras.</p>
+          </div>
+        </div>
+
+        <div class="kpi-grid">
+          <div class="kpi-card">
+            <div class="kpi-top">
+              <span class="kpi-title">Motoristas Homologados</span>
+              <span class="kpi-icon">🚚</span>
+            </div>
+            <div class="kpi-number" id="kpi-drivers">0</div>
+            <div class="kpi-status ok">
+              <span>●</span> Cadastrados e certificados no SIG
+            </div>
+          </div>
+
+          <div class="kpi-card">
+            <div class="kpi-top">
+              <span class="kpi-title">Escalas Planejadas</span>
+              <span class="kpi-icon">📅</span>
+            </div>
+            <div class="kpi-number" id="kpi-schedules">0</div>
+            <div class="kpi-status neutral">
+              <span>●</span> Alocações ativas no ciclo atual
+            </div>
+          </div>
+
+          <div class="kpi-card warning">
+            <div class="kpi-top">
+              <span class="kpi-title">Conflitos de Jornada</span>
+              <span class="kpi-icon">⚠️</span>
+            </div>
+            <div class="kpi-number text-alert" id="kpi-conflicts">0</div>
+            <div class="kpi-status alert">
+              <span>●</span> Violações de descanso / certificação
+            </div>
+          </div>
+
+          <div class="kpi-card">
+            <div class="kpi-top">
+              <span class="kpi-title">Índice de Cobertura</span>
+              <span class="kpi-icon">🛡️</span>
+            </div>
+            <div class="kpi-number" id="kpi-coverage">100%</div>
+            <div class="kpi-status ok">
+              <span>●</span> Conformidade com Acordo Coletivo
+            </div>
+          </div>
+        </div>
+
+        <!-- Validador de Invariantes em Tempo Real -->
+        <div class="content-card mt-6">
+          <div class="content-card-header">
+            <div>
+              <h3>Simulador de Elegibilidade de Alocação</h3>
+              <p>Validação prévia das regras de negócio (Art. 66/67 CLT: 11h de descanso + certificação CNH).</p>
+            </div>
+            <span class="tag-audit">Heurística: Prevenção de Erros</span>
+          </div>
+          <div class="content-card-body">
+            <form id="formValidateRule" class="grid-form-inline">
+              <div class="input-block">
+                <label>ID do Motorista</label>
+                <input type="number" id="valDriverId" placeholder="Ex: 1" required>
+              </div>
+              <div class="input-block">
+                <label>Início da Jornada Pretendida</label>
+                <input type="datetime-local" id="valStart" required>
+              </div>
+              <div class="input-block">
+                <label>Término Estimado</label>
+                <input type="datetime-local" id="valEnd" required>
+              </div>
+              <div class="input-block action-cell">
+                <button type="submit" class="btn btn-primary">Auditar Elegibilidade</button>
+              </div>
+            </form>
+            <div id="validationResult" class="audit-response hidden mt-4"></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- PAINEL 2: QUADRO DE PROFISSIONAIS -->
+      <section id="view-employees" class="view-panel">
+        <div class="section-title-wrap flex-between">
+          <div>
+            <h2>Quadro de Colaboradores e Especialidades</h2>
+            <p>Base unificada de motoristas, qualificações e controle de descansos interjornada.</p>
+          </div>
+          <button type="button" class="btn btn-primary" id="btnOpenEmployeeModal">
+            <span>+ Cadastrar Profissional</span>
+          </button>
+        </div>
+
+        <div class="content-card">
+          <div class="table-responsive">
+            <table class="corp-table">
+              <thead>
+                <tr>
+                  <th>Identificador</th>
+                  <th>Colaborador</th>
+                  <th>Função / Ocupação</th>
+                  <th>Habilitação (CNH)</th>
+                  <th>Status Operacional</th>
+                  <th>Ações</th>
+                </tr>
+              </thead>
+              <tbody id="employeeTableBody">
+                <tr><td colspan="6" class="text-center">Carregando dados corporativos...</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- PAINEL 3: ESCALAS & ALOCAÇÃO -->
+      <section id="view-allocations" class="view-panel">
+        <div class="section-title-wrap">
+          <div>
+            <h2>Central de Escalonamento e Alocação</h2>
+            <p>Vinculação formal de profissionais com publicação no padrão <code>MotoristaEscalado</code>.</p>
+          </div>
+        </div>
+
+        <div class="content-card max-w-3xl">
+          <div class="content-card-header">
+            <h3>Nova Ordem de Alocação</h3>
+          </div>
+          <div class="content-card-body">
+            <form id="formAllocation" class="form-vertical">
+              <div class="form-row-2">
+                <div class="form-group">
+                  <label>ID do Profissional</label>
+                  <input type="number" id="allocDriverId" placeholder="Ex: 1" required>
+                </div>
+                <div class="form-group">
+                  <label>Código da Escala / Turno</label>
+                  <input type="text" id="allocShiftId" placeholder="Ex: TURNO-NOTURNO-02" required>
+                </div>
+              </div>
+              <div class="form-row-2">
+                <div class="form-group">
+                  <label>Início da Escala</label>
+                  <input type="datetime-local" id="allocStart" required>
+                </div>
+                <div class="form-group">
+                  <label>Previsão de Término</label>
+                  <input type="datetime-local" id="allocEnd" required>
+                </div>
+              </div>
+              <div class="mt-4 form-actions">
+                <button type="submit" class="btn btn-success btn-lg">
+                  Confirmar e Registrar Alocação (Outbox)
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      </section>
+
+      <!-- PAINEL 4: AUDITORIA DE CONFLITOS -->
+      <section id="view-conflicts" class="view-panel">
+        <div class="section-title-wrap">
+          <div>
+            <h2>Auditoria de Invariantes e Conflitos</h2>
+            <p>Monitoramento contínuo de descansos violados e escalas sobrepostas.</p>
+          </div>
+        </div>
+
+        <div class="content-card">
+          <div class="content-card-body">
+            <div id="conflictsList" class="conflict-feed">
+              <div class="empty-audit-state">
+                <div class="empty-icon">✓</div>
+                <h4>Nenhum Conflito Ativo no Momento</h4>
+                <p>Todas as escalas registradas cumprem os requisitos de descanso mínimo e certificação.</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <!-- MODAL CORPORATIVO: NOVO PROFISSIONAL -->
+  <div id="modalEmployee" class="modal-backdrop hidden">
+    <div class="modal-box">
+      <div class="modal-header">
+        <div>
+          <h3>Novo Cadastro de Profissional</h3>
+          <span class="modal-sub">Módulo de RH &bull; SIG-Log People</span>
+        </div>
+        <button type="button" class="btn-close" id="btnCloseEmployeeModal">&times;</button>
+      </div>
+
+      <form id="formNewEmployee" class="modal-body">
+        <div class="form-group">
+          <label>Nome Completo do Colaborador</label>
+          <input type="text" id="empName" placeholder="Ex: Carlos Eduardo de Miranda" required>
+        </div>
+
+        <div class="form-row-2">
+          <div class="form-group">
+            <label>Função Operacional</label>
+            <select id="empRole" required>
+              <option value="Motorista Carreteiro">Motorista Carreteiro</option>
+              <option value="Motorista Urbano">Motorista Urbano (VUC)</option>
+              <option value="Operador de Pátio">Operador de Logística/Pátio</option>
+            </select>
+          </div>
+
+          <div class="form-group">
+            <label>Categoria CNH</label>
+            <input type="text" id="empCnh" placeholder="Ex: Categoria E" value="Categoria E" required>
+          </div>
+        </div>
+
+        <div class="modal-footer">
+          <button type="button" class="btn btn-ghost" id="btnCancelEmployee">Cancelar</button>
+          <button type="submit" class="btn btn-primary">Salvar no Banco de Dados</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <script src="js/api.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>
