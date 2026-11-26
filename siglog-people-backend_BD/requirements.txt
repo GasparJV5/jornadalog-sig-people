@@ -1,0 +1,6 @@
+Flask>=3.0
+PyYAML>=6.0              # teste de contrato do openapi.yaml
+python-dotenv>=1.0       # lê o .env (mesmas variáveis dos scripts de migrations/seeds)
+psycopg[binary]>=3.2     # PostgreSQL (mesmo driver dos scripts executar_migrations/seeds)
+pytest>=8.0              # opcional: os testes também rodam com `python -m unittest`
+pika>=1.3                # opcional: só para RabbitMQEventPublisher (modo memória + RabbitMQ direto)

@@ -1,0 +1,13 @@
+# Segredos: NUNCA versionar (use .env.example como modelo)
+.env
+
+# Ambiente virtual e caches do Python
+.venv/
+venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# Configuração local do PyCharm / editores
+.idea/
+.vscode/

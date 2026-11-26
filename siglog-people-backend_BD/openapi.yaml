@@ -1,0 +1,742 @@
+openapi: 3.0.3
+info:
+  title: SIG-Log People API
+  version: 1.0.0
+  description: |
+    Módulo RH, Jornada & Escalonamento (Squad 05) da plataforma SIG-Log.
+    Aloca motoristas respeitando disponibilidade, certificação, descanso, jornada e conflitos.
+
+    **Regras de negócio** (códigos estáveis retornados em `violacoes[].codigo`):
+    - `MOTORISTA_INATIVO`, `MOTORISTA_INDISPONIVEL`
+    - `CNH_INCOMPATIVEL`, `CERTIFICACAO_AUSENTE`, `CERTIFICACAO_VENCIDA`, `CERTIFICACAO_SUSPENSA`
+    - `DESCANSO_INSUFICIENTE` (mínimo 11h entre jornadas)
+    - `JORNADA_EXCEDIDA` (máximo 10h)
+    - `CONFLITO_MOTORISTA`, `CONFLITO_VEICULO`
+
+    **Modelo de dados.** Toda alocação pertence a uma escala (`escala_id` obrigatório) e todo registro de
+    jornada pertence a uma alocação (`alocacao_id` obrigatório).
+
+    **Datas/horas** são ISO-8601. Valores com fuso são convertidos para UTC.
+
+    **Eventos publicados** (consumidos por outros squads; ver `docs/08_events.md`):
+    `MotoristaEscalado` (consumido pelo Fleet), `JornadaIniciada`, `JornadaFinalizada`,
+    `DescansoRegistrado`, `CertificacaoAtualizada`, `ConflitoDeJornadaDetectado`.
+  contact:
+    name: Squad 05 — SIG-Log People
+servers:
+  - url: http://localhost:5005
+    description: Desenvolvimento local
+tags:
+  - name: Saúde
+  - name: Funcionários
+    description: UC01 a UC03
+  - name: Veículos
+  - name: Turnos e escalas
+    description: UC04, UC05, UC09, UC10
+  - name: Alocações
+    description: UC08 e validação pelo motor de regras
+  - name: Jornada e descanso
+    description: UC06 e UC07
+
+paths:
+  /health:
+    get:
+      tags: [Saúde]
+      summary: Verifica a saúde do serviço
+      operationId: health
+      responses:
+        "200":
+          description: Serviço no ar
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status, service]
+                properties:
+                  status: {type: string, example: ok}
+                  service: {type: string, example: siglog-people}
+
+  /drivers:
+    post:
+      tags: [Funcionários]
+      summary: Cadastrar funcionário (UC01)
+      description: Cria motorista (padrão) ou operador. Motorista exige `cnh_categoria`.
+      operationId: createDriver
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/FuncionarioCreate"}
+            example:
+              nome: Ana Souza
+              cpf: "529.982.247-25"
+              tipo: MOTORISTA
+              cnh_categoria: C
+      responses:
+        "201":
+          description: Funcionário criado
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Funcionario"}
+        "400": {$ref: "#/components/responses/Validacao"}
+        "409": {$ref: "#/components/responses/Conflito"}
+    get:
+      tags: [Funcionários]
+      summary: Listar motoristas
+      operationId: listDrivers
+      responses:
+        "200":
+          description: Lista de motoristas
+          content:
+            application/json:
+              schema:
+                type: array
+                items: {$ref: "#/components/schemas/Funcionario"}
+
+  /drivers/{id}:
+    parameters:
+      - {$ref: "#/components/parameters/Id"}
+    get:
+      tags: [Funcionários]
+      summary: Consultar motorista
+      operationId: getDriver
+      responses:
+        "200":
+          description: Motorista encontrado
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Funcionario"}
+        "404": {$ref: "#/components/responses/NaoEncontrado"}
+        "422": {$ref: "#/components/responses/RegraDeNegocio"}
+
+  /drivers/{id}/certifications:
+    parameters:
+      - {$ref: "#/components/parameters/Id"}
+    post:
+      tags: [Funcionários]
+      summary: Registrar ou atualizar certificação (UC02)
+      description: Se o tipo já existir, atualiza a validade. Publica `CertificacaoAtualizada`.
+      operationId: addCertification
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/CertificacaoCreate"}
+            example: {tipo: MOPP, validade: "2027-01-01", emitida_em: "2025-01-01"}
+      responses:
+        "201":
+          description: Certificação registrada; retorna o funcionário atualizado
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Funcionario"}
+        "400": {$ref: "#/components/responses/Validacao"}
+        "404": {$ref: "#/components/responses/NaoEncontrado"}
+
+  /drivers/{id}/availability:
+    parameters:
+      - {$ref: "#/components/parameters/Id"}
+    get:
+      tags: [Funcionários]
+      summary: Consultar disponibilidade ordenada por início
+      operationId: getAvailability
+      responses:
+        "200":
+          description: Janelas de disponibilidade
+          content:
+            application/json:
+              schema:
+                type: array
+                items: {$ref: "#/components/schemas/Disponibilidade"}
+        "404": {$ref: "#/components/responses/NaoEncontrado"}
+    post:
+      tags: [Funcionários]
+      summary: Registrar disponibilidade (UC03)
+      description: |
+        `disponivel=true` abre uma janela em que o motorista pode ser alocada;
+        `disponivel=false` cria um bloqueio (férias, atestado etc.).
+      operationId: addAvailability
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/DisponibilidadeCreate"}
+            example: {inicio: "2026-03-01T00:00:00", fim: "2026-03-05T23:00:00", disponivel: true}
+      responses:
+        "201":
+          description: Disponibilidade registrada
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Disponibilidade"}
+        "400": {$ref: "#/components/responses/Validacao"}
+        "404": {$ref: "#/components/responses/NaoEncontrado"}
+
+  /vehicles:
+    post:
+      tags: [Veículos]
+      summary: Cadastrar veículo (réplica local do módulo Fleet)
+      description: A fonte da verdade de veículos é o módulo Fleet; aqui guardamos os requisitos de habilitação. A placa é única.
+      operationId: createVehicle
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/VeiculoCreate"}
+            example: {placa: ABC1D23, cnh_exigida: C, certificacoes_exigidas: [MOPP]}
+      responses:
+        "201":
+          description: Veículo criado
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Veiculo"}
+        "400": {$ref: "#/components/responses/Validacao"}
+        "409": {$ref: "#/components/responses/Conflito"}
+
+  /shifts:
+    post:
+      tags: [Turnos e escalas]
+      summary: Criar turno (UC04)
+      description: Turnos com `fim` menor ou igual ao `inicio` cruzam a meia-noite. Duração máxima de 10h. O nome é único (sem distinguir maiúsculas).
+      operationId: createShift
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/TurnoCreate"}
+            example: {nome: Manhã, inicio: "06:00", fim: "14:00"}
+      responses:
+        "201":
+          description: Turno criado
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Turno"}
+        "400": {$ref: "#/components/responses/Validacao"}
+        "409": {$ref: "#/components/responses/Conflito"}
+
+  /schedules:
+    post:
+      tags: [Turnos e escalas]
+      summary: Criar escala (UC05)
+      operationId: createSchedule
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/EscalaCreate"}
+            example: {data: "2026-03-02", turno_id: "3f8c2a1e-0000-4000-8000-000000000001"}
+      responses:
+        "201":
+          description: Escala criada
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Escala"}
+        "400": {$ref: "#/components/responses/Validacao"}
+        "404": {$ref: "#/components/responses/NaoEncontrado"}
+        "409": {$ref: "#/components/responses/Conflito"}
+
+  /schedules/{id}:
+    parameters:
+      - {$ref: "#/components/parameters/Id"}
+    get:
+      tags: [Turnos e escalas]
+      summary: Consultar escala com turno e alocações (UC10)
+      operationId: getSchedule
+      responses:
+        "200":
+          description: Escala encontrada
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/EscalaDetalhe"}
+        "404": {$ref: "#/components/responses/NaoEncontrado"}
+
+  /schedules/{id}/conflicts:
+    parameters:
+      - {$ref: "#/components/parameters/Id"}
+    get:
+      tags: [Turnos e escalas]
+      summary: Detectar conflitos nas alocações da escala (UC09)
+      operationId: getScheduleConflicts
+      responses:
+        "200":
+          description: Conflitos encontrados (lista vazia se não houver)
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [escala_id, conflitos]
+                properties:
+                  escala_id: {type: string}
+                  conflitos:
+                    type: array
+                    items:
+                      type: object
+                      required: [alocacao_id, codigo, mensagem]
+                      properties:
+                        alocacao_id: {type: string}
+                        codigo: {type: string, example: CONFLITO_VEICULO}
+                        mensagem: {type: string}
+        "404": {$ref: "#/components/responses/NaoEncontrado"}
+
+  /allocations/validate:
+    post:
+      tags: [Alocações]
+      summary: Validar alocação sem persistir
+      description: |
+        Executa o motor de regras. Responde **200** mesmo quando há violações
+        (o campo `permitido` indica o resultado). `escala_id` é obrigatório: o período é o do turno
+        na data da escala. `inicio` e `fim` são opcionais (devem vir juntos e começar na data da escala).
+      operationId: validateAllocation
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/AlocacaoCreate"}
+            example:
+              motorista_id: "11111111-0000-4000-8000-000000000001"
+              veiculo_id: "22222222-0000-4000-8000-000000000001"
+              inicio: "2026-03-02T06:00:00"
+              fim: "2026-03-02T14:00:00"
+      responses:
+        "200":
+          description: Resultado da validação
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/ResultadoValidacao"}
+              examples:
+                permitido:
+                  value: {permitido: true, violacoes: []}
+                negado:
+                  value:
+                    permitido: false
+                    violacoes:
+                      - {codigo: DESCANSO_INSUFICIENTE, mensagem: "Descanso de 6.0h desde a última jornada; mínimo 11h."}
+        "400": {$ref: "#/components/responses/Validacao"}
+        "404": {$ref: "#/components/responses/NaoEncontrado"}
+        "422": {$ref: "#/components/responses/RegraDeNegocio"}
+
+  /allocations:
+    post:
+      tags: [Alocações]
+      summary: Alocar motorista (UC08)
+      description: |
+        Valida e persiste. Em caso de sucesso publica `MotoristaEscalado` (consumido pelo Fleet).
+        Se houver conflito, publica `ConflitoDeJornadaDetectado`. Violações retornam **422**.
+        Um motorista só pode ser alocado uma vez por escala (**409** caso contrário).
+      operationId: createAllocation
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/AlocacaoCreate"}
+      responses:
+        "201":
+          description: Alocação criada
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Alocacao"}
+        "400": {$ref: "#/components/responses/Validacao"}
+        "404": {$ref: "#/components/responses/NaoEncontrado"}
+        "409": {$ref: "#/components/responses/Conflito"}
+        "422":
+          description: Alocação negada pelo motor de regras
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/ErroRegra"}
+              example:
+                error:
+                  code: REGRA_DE_NEGOCIO
+                  message: Alocação não permitida.
+                  violacoes:
+                    - {codigo: MOTORISTA_INDISPONIVEL, mensagem: "Nenhuma janela de disponibilidade cobre todo o período."}
+
+  /journeys/start:
+    post:
+      tags: [Jornada e descanso]
+      summary: Iniciar jornada
+      description: Publica `JornadaIniciada`. A jornada pertence a uma alocação do próprio motorista. Falha se a alocação já tiver jornada ou houver outra em aberto (409), ou se o descanso for insuficiente (422).
+      operationId: startJourney
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [motorista_id, alocacao_id, inicio]
+              properties:
+                motorista_id: {type: string}
+                alocacao_id: {type: string}
+                inicio: {type: string, format: date-time}
+      responses:
+        "201":
+          description: Jornada iniciada
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Jornada"}
+        "400": {$ref: "#/components/responses/Validacao"}
+        "404": {$ref: "#/components/responses/NaoEncontrado"}
+        "409": {$ref: "#/components/responses/Conflito"}
+        "422": {$ref: "#/components/responses/RegraDeNegocio"}
+
+  /journeys/{id}/finish:
+    parameters:
+      - {$ref: "#/components/parameters/Id"}
+    post:
+      tags: [Jornada e descanso]
+      summary: Finalizar jornada
+      description: Publica `JornadaFinalizada`, com `horas` e `excedeu_limite`.
+      operationId: finishJourney
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [fim]
+              properties:
+                fim: {type: string, format: date-time}
+      responses:
+        "200":
+          description: Jornada finalizada
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Jornada"}
+        "400": {$ref: "#/components/responses/Validacao"}
+        "404": {$ref: "#/components/responses/NaoEncontrado"}
+        "409": {$ref: "#/components/responses/Conflito"}
+
+  /journeys/validate:
+    post:
+      tags: [Jornada e descanso]
+      summary: Validar limite de jornada (UC06)
+      operationId: validateJourney
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/PeriodoMotorista"}
+      responses:
+        "200":
+          description: Resultado da validação
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/ResultadoValidacao"}
+        "400": {$ref: "#/components/responses/Validacao"}
+        "404": {$ref: "#/components/responses/NaoEncontrado"}
+
+  /rest-periods/validate:
+    post:
+      tags: [Jornada e descanso]
+      summary: Validar período de descanso (UC07)
+      description: Válido se tiver ao menos 11h e não sobrepuser jornada ou alocação.
+      operationId: validateRest
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/PeriodoMotorista"}
+      responses:
+        "200":
+          description: Resultado da validação
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/ResultadoValidacao"}
+        "400": {$ref: "#/components/responses/Validacao"}
+        "404": {$ref: "#/components/responses/NaoEncontrado"}
+
+  /rest-periods:
+    post:
+      tags: [Jornada e descanso]
+      summary: Registrar descanso
+      description: Publica `DescansoRegistrado`. Descanso inválido retorna 422.
+      operationId: registerRest
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: {$ref: "#/components/schemas/PeriodoMotorista"}
+      responses:
+        "201":
+          description: Descanso registrado
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/Descanso"}
+        "400": {$ref: "#/components/responses/Validacao"}
+        "404": {$ref: "#/components/responses/NaoEncontrado"}
+        "422": {$ref: "#/components/responses/RegraDeNegocio"}
+
+components:
+  parameters:
+    Id:
+      name: id
+      in: path
+      required: true
+      description: Identificador (UUID) do recurso
+      schema: {type: string}
+
+  responses:
+    Validacao:
+      description: Dados de entrada inválidos
+      content:
+        application/json:
+          schema: {$ref: "#/components/schemas/Erro"}
+          example: {error: {code: VALIDATION_ERROR, message: "Campos obrigatórios ausentes: nome."}}
+    NaoEncontrado:
+      description: Recurso não encontrado
+      content:
+        application/json:
+          schema: {$ref: "#/components/schemas/Erro"}
+          example: {error: {code: NOT_FOUND, message: "Funcionário x não encontrado."}}
+    Conflito:
+      description: "Conflito de estado (por exemplo, CPF duplicado ou jornada já aberta)"
+      content:
+        application/json:
+          schema: {$ref: "#/components/schemas/Erro"}
+          example: {error: {code: CONFLICT, message: "Já existe funcionário com este CPF."}}
+    RegraDeNegocio:
+      description: Regra de negócio violada
+      content:
+        application/json:
+          schema: {$ref: "#/components/schemas/ErroRegra"}
+
+  schemas:
+    Erro:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code:
+              type: string
+              enum: [VALIDATION_ERROR, NOT_FOUND, CONFLICT, REGRA_DE_NEGOCIO, DOMAIN_ERROR, METHOD_NOT_ALLOWED, INTERNAL_ERROR]
+            message: {type: string}
+
+    ErroRegra:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code: {type: string, example: REGRA_DE_NEGOCIO}
+            message: {type: string}
+            violacoes:
+              type: array
+              items: {$ref: "#/components/schemas/Violacao"}
+
+    Violacao:
+      type: object
+      required: [codigo, mensagem]
+      properties:
+        codigo:
+          type: string
+          enum: [MOTORISTA_INATIVO, MOTORISTA_INDISPONIVEL, CNH_INCOMPATIVEL, CERTIFICACAO_AUSENTE,
+                 CERTIFICACAO_VENCIDA, CERTIFICACAO_SUSPENSA, DESCANSO_INSUFICIENTE, DESCANSO_SOBREPOE_TRABALHO,
+                 JORNADA_EXCEDIDA, CONFLITO_MOTORISTA, CONFLITO_VEICULO]
+        mensagem: {type: string}
+
+    ResultadoValidacao:
+      type: object
+      required: [permitido, violacoes]
+      properties:
+        permitido: {type: boolean}
+        violacoes:
+          type: array
+          items: {$ref: "#/components/schemas/Violacao"}
+
+    TipoFuncionario:
+      type: string
+      enum: [MOTORISTA, OPERADOR]
+
+    CnhCategoria:
+      type: string
+      enum: [A, B, C, D, E]
+
+    FuncionarioCreate:
+      type: object
+      required: [nome, cpf]
+      properties:
+        nome: {type: string}
+        cpf: {type: string, description: "CPF válido, com ou sem máscara"}
+        tipo: {$ref: "#/components/schemas/TipoFuncionario"}
+        cnh_categoria:
+          allOf: [{$ref: "#/components/schemas/CnhCategoria"}]
+          description: Obrigatória para MOTORISTA
+
+    Certificacao:
+      type: object
+      required: [tipo, validade]
+      properties:
+        tipo: {type: string, example: MOPP}
+        validade: {type: string, format: date, nullable: true, description: "Nulo = sem vencimento"}
+        emitida_em: {type: string, format: date, nullable: true}
+
+    CertificacaoCreate:
+      type: object
+      required: [tipo, validade]
+      properties:
+        tipo: {type: string}
+        validade: {type: string, format: date}
+        emitida_em: {type: string, format: date}
+
+    Funcionario:
+      type: object
+      required: [id, nome, cpf, tipo, ativo, certificacoes]
+      properties:
+        id: {type: string}
+        nome: {type: string}
+        cpf: {type: string, description: Apenas dígitos}
+        tipo: {$ref: "#/components/schemas/TipoFuncionario"}
+        ativo: {type: boolean}
+        cnh_categoria:
+          allOf: [{$ref: "#/components/schemas/CnhCategoria"}]
+          description: Presente apenas para motoristas
+        certificacoes:
+          type: array
+          items: {$ref: "#/components/schemas/Certificacao"}
+
+    DisponibilidadeCreate:
+      type: object
+      required: [inicio, fim]
+      properties:
+        inicio: {type: string, format: date-time}
+        fim: {type: string, format: date-time}
+        disponivel: {type: boolean, default: true}
+
+    Disponibilidade:
+      type: object
+      required: [id, funcionario_id, inicio, fim, disponivel]
+      properties:
+        id: {type: string}
+        funcionario_id: {type: string}
+        inicio: {type: string, format: date-time}
+        fim: {type: string, format: date-time}
+        disponivel: {type: boolean}
+
+    VeiculoCreate:
+      type: object
+      required: [placa]
+      properties:
+        placa: {type: string}
+        cnh_exigida:
+          allOf: [{$ref: "#/components/schemas/CnhCategoria"}]
+          default: C
+        certificacoes_exigidas:
+          type: array
+          items: {type: string}
+        modelo: {type: string, description: "Padrão: NAO INFORMADO"}
+        marca: {type: string}
+        ano: {type: integer, minimum: 1}
+
+    Veiculo:
+      type: object
+      required: [id, placa, cnh_exigida, certificacoes_exigidas, modelo]
+      properties:
+        id: {type: string}
+        placa: {type: string}
+        cnh_exigida: {$ref: "#/components/schemas/CnhCategoria"}
+        certificacoes_exigidas:
+          type: array
+          items: {type: string}
+        modelo: {type: string}
+        marca: {type: string, nullable: true}
+        ano: {type: integer, nullable: true}
+
+    TurnoCreate:
+      type: object
+      required: [nome, inicio, fim]
+      properties:
+        nome: {type: string}
+        inicio: {type: string, example: "06:00", description: HH:MM}
+        fim: {type: string, example: "14:00", description: HH:MM}
+
+    Turno:
+      type: object
+      required: [id, nome, inicio, fim]
+      properties:
+        id: {type: string}
+        nome: {type: string}
+        inicio: {type: string, example: "06:00"}
+        fim: {type: string, example: "14:00"}
+
+    EscalaCreate:
+      type: object
+      required: [data, turno_id]
+      properties:
+        data: {type: string, format: date}
+        turno_id: {type: string}
+
+    Escala:
+      type: object
+      required: [id, data, turno_id, alocacoes_ids]
+      properties:
+        id: {type: string}
+        data: {type: string, format: date}
+        turno_id: {type: string}
+        alocacoes_ids:
+          type: array
+          items: {type: string}
+
+    EscalaDetalhe:
+      allOf:
+        - {$ref: "#/components/schemas/Escala"}
+        - type: object
+          required: [turno, alocacoes]
+          properties:
+            turno: {$ref: "#/components/schemas/Turno"}
+            alocacoes:
+              type: array
+              items: {$ref: "#/components/schemas/Alocacao"}
+
+    AlocacaoCreate:
+      type: object
+      required: [motorista_id, veiculo_id, escala_id]
+      description: O período vem do turno da escala; `inicio` e `fim` (opcionais, juntos) o substituem na data da escala.
+      properties:
+        motorista_id: {type: string}
+        veiculo_id: {type: string}
+        inicio: {type: string, format: date-time}
+        fim: {type: string, format: date-time}
+        escala_id: {type: string}
+        viagem_id: {type: string, description: "Referência opcional à viagem no módulo Fleet (usada em POST /allocations)"}
+
+    Alocacao:
+      type: object
+      required: [id, motorista_id, veiculo_id, inicio, fim]
+      properties:
+        id: {type: string}
+        motorista_id: {type: string}
+        veiculo_id: {type: string}
+        inicio: {type: string, format: date-time}
+        fim: {type: string, format: date-time}
+        escala_id: {type: string, nullable: true}
+        turno_id: {type: string, nullable: true}
+        viagem_id: {type: string, nullable: true}
+
+    PeriodoMotorista:
+      type: object
+      required: [motorista_id, inicio, fim]
+      properties:
+        motorista_id: {type: string}
+        inicio: {type: string, format: date-time}
+        fim: {type: string, format: date-time}
+
+    Jornada:
+      type: object
+      required: [id, funcionario_id, alocacao_id, inicio]
+      properties:
+        id: {type: string}
+        funcionario_id: {type: string}
+        alocacao_id: {type: string}
+        inicio: {type: string, format: date-time}
+        fim: {type: string, format: date-time, nullable: true}
+
+    Descanso:
+      type: object
+      required: [id, funcionario_id, inicio, fim]
+      properties:
+        id: {type: string}
+        funcionario_id: {type: string}
+        inicio: {type: string, format: date-time}
+        fim: {type: string, format: date-time}
